@@ -67,7 +67,7 @@ The MVP starts as a modular monolith: one deployable backend with clear ingestio
 
 **Phase 1 — Backend foundation:** in progress.
 
-The repository currently contains a .NET 10 ASP.NET Core API project and an xUnit test project. The next step is to replace the template endpoint with the first project-specific API endpoint.
+The repository currently contains a .NET 10 ASP.NET Core API project, an xUnit test project, and a controller-based `GET /health` endpoint.
 
 ## Local development
 
@@ -89,7 +89,7 @@ Run the API:
 dotnet run --project src/CloudUsage.Api
 ```
 
-While the template endpoint is still present, visit `http://localhost:5073/weatherforecast` to verify the API is running.
+Visit `http://localhost:5073/health` to verify the API is running.
 
 ## Future iterations
 
