@@ -1,0 +1,13 @@
+# .NET build output
+[Bb]in/
+[Oo]bj/
+
+# Visual Studio and user-specific IDE state
+.vs/
+*.user
+*.suo
+*.userosscache
+*.sln.docstates
+
+# Local project planning notes (not part of the portfolio repository yet)
+.project-notes/
