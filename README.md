@@ -85,12 +85,32 @@ docker compose up -d
 docker compose ps
 ```
 
-The container exposes SQL Server only on `localhost:1433` and persists its data in the named Docker volume `cloud-usage-sqlserver-data`. The `.env` file is ignored by Git and must never be committed.
+The container exposes SQL Server only on `127.0.0.1:1433` and persists its data in the named Docker volume `cloud-usage-sqlserver-data`. The `.env` file is ignored by Git and must never be committed.
+
+Configure the API's local connection string with .NET User Secrets. Replace `<password-from-dotenv>` with the value you chose in `.env`; do not include angle brackets.
+
+```powershell
+dotnet user-secrets set --project src/CloudUsage.Api "ConnectionStrings:UsageAnalyticsDatabase" "Server=127.0.0.1,1433;Database=CloudUsageAnalytics;User ID=sa;Password=<password-from-dotenv>;Encrypt=True;TrustServerCertificate=True"
+```
+
+Restore the local EF Core CLI tool before creating or applying migrations:
+
+```powershell
+dotnet tool restore
+```
+
+Apply all pending EF Core migrations to the local database:
+
+```powershell
+dotnet tool run dotnet-ef database update --project src/CloudUsage.Api --startup-project src/CloudUsage.Api
+```
+
+The local container uses a self-signed certificate, so `TrustServerCertificate=True` is limited to development. Production will use Azure SQL with proper certificate validation and managed secret configuration.
 
 Build and test the solution:
 
 ```powershell
-dotnet restore CloudUsageAnalytics.slnx --source https://api.nuget.org/v3/index.json
+dotnet restore CloudUsageAnalytics.slnx
 dotnet build CloudUsageAnalytics.slnx --no-restore
 dotnet test CloudUsageAnalytics.slnx --no-build --no-restore
 ```
