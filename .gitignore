@@ -11,3 +11,6 @@
 
 # Local project planning notes (not part of the portfolio repository yet)
 .project-notes/
+
+# Local development secrets
+.env

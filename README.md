@@ -74,6 +74,18 @@ The repository currently contains a .NET 10 ASP.NET Core API project, an xUnit t
 Prerequisites for the current backend scaffold:
 
 - .NET 10 SDK
+- Docker Desktop, using Linux containers, for the local SQL Server environment
+
+### Local SQL Server
+
+The project uses SQL Server in Docker for reproducible local development. Copy `.env.example` to `.env`, choose a strong local `MSSQL_SA_PASSWORD`, then start the database:
+
+```powershell
+docker compose up -d
+docker compose ps
+```
+
+The container exposes SQL Server on `localhost:1433` and persists its data in the named Docker volume `cloud-usage-sqlserver-data`. The `.env` file is ignored by Git and must never be committed.
 
 Build and test the solution:
 
