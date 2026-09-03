@@ -85,7 +85,7 @@ docker compose up -d
 docker compose ps
 ```
 
-The container exposes SQL Server on `localhost:1433` and persists its data in the named Docker volume `cloud-usage-sqlserver-data`. The `.env` file is ignored by Git and must never be committed.
+The container exposes SQL Server only on `localhost:1433` and persists its data in the named Docker volume `cloud-usage-sqlserver-data`. The `.env` file is ignored by Git and must never be committed.
 
 Build and test the solution:
 
