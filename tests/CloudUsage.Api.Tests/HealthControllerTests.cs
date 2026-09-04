@@ -1,4 +1,4 @@
-using CloudUsage.Api.Contracts;
+using CloudUsage.Api.Contracts.Health;
 using CloudUsage.Api.Controllers;
 using Microsoft.AspNetCore.Mvc;
 
