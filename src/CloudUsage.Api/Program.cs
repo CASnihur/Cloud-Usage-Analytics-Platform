@@ -1,4 +1,5 @@
 using CloudUsage.Api.Data;
+using CloudUsage.Api.Application.UsageEvents;
 using Microsoft.EntityFrameworkCore;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -6,6 +7,9 @@ var builder = WebApplication.CreateBuilder(args);
 // Add services to the container.
 builder.Services.AddControllers();
 builder.Services.AddOpenApi();
+builder.Services.AddProblemDetails();
+builder.Services.AddSingleton(TimeProvider.System);
+builder.Services.AddScoped<IUsageEventIngestionService, UsageEventIngestionService>();
 
 var connectionString = builder.Configuration.GetConnectionString("UsageAnalyticsDatabase")
     ?? throw new InvalidOperationException(
@@ -23,6 +27,7 @@ if (app.Environment.IsDevelopment())
 }
 
 app.UseHttpsRedirection();
+app.UseExceptionHandler();
 app.MapControllers();
 
 app.Run();
