@@ -4,3 +4,16 @@ GET {{CloudUsage.Api_HostAddress}}/health
 Accept: application/json
 
 ###
+
+# Send twice with the same eventId to observe 201 followed by 409.
+POST {{CloudUsage.Api_HostAddress}}/api/usage-events
+Content-Type: application/json
+
+{
+  "eventId": "73f529e4-1e11-4c7f-8ec5-d04d06e40f67",
+  "userId": "user-1042",
+  "productCode": "studio",
+  "eventType": "feature_used",
+  "occurredAtUtc": "2026-09-05T10:30:00Z",
+  "properties": { "featureName": "Workflow Analyzer" }
+}

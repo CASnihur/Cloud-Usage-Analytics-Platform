@@ -1,0 +1,7 @@
+<RunSettings>
+  <RunConfiguration>
+    <EnvironmentVariables>
+      <CLOUD_USAGE_SQL_TESTS>1</CLOUD_USAGE_SQL_TESTS>
+    </EnvironmentVariables>
+  </RunConfiguration>
+</RunSettings>

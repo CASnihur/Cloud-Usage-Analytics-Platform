@@ -123,6 +123,22 @@ dotnet run --project src/CloudUsage.Api
 
 Visit `http://localhost:5073/health` to verify the API is running.
 
+## Single-event ingestion and integration tests
+
+The single-event endpoint is `POST /api/usage-events`. See the API project's `.http` file for a sample. A durable insert returns `201 Created`; invalid input returns `400` problem details, and an existing event ID returns `409 Conflict`. The response confirms raw storage; analytics processing has not occurred yet. There is no event retrieval endpoint yet, so the response does not advertise a Location URL.
+
+The endpoint accepts optional object-valued `properties`, enforces string limits matching the schema, and limits the request body to 64 KiB. Receipt time is server-generated; occurrence timestamps are normalized to UTC. Event-type catalogs and business-specific timestamp limits are deferred.
+
+Ordinary tests exercise HTTP binding using a fake service. To also run the SQL Server integration test, start Docker SQL Server and configure the API User Secret above, then run:
+
+```powershell
+$env:CLOUD_USAGE_SQL_TESTS = '1'
+dotnet test CloudUsageAnalytics.slnx
+Remove-Item Env:CLOUD_USAGE_SQL_TESTS
+```
+
+The SQL test requires permission to create/drop databases. It migrates a unique `CloudUsageTests_<guid>` database and removes it afterward; it never migrates or clears the application database. It covers persistence, sequential duplicates, a forced concurrent insert race, unexpected constraint failures, cancellation, and HTTP-to-SQL ingestion. If a test process is killed, a test database may require manual cleanup.
+
 ## Future iterations
 
 Once the MVP is working end-to-end, potential extensions include scheduled transformations, Azure Data Factory or dbt, richer analytics such as retention or cohorts, authentication, and queue-based ingestion.
