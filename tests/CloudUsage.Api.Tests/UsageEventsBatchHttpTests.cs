@@ -3,6 +3,7 @@ using System.Net.Http.Json;
 using System.Text;
 using CloudUsage.Api.Application.UsageEvents;
 using CloudUsage.Api.Contracts.UsageEvents;
+using CloudUsage.Api.Data.Entities;
 using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using Microsoft.Extensions.DependencyInjection;
@@ -23,7 +24,27 @@ public sealed class UsageEventsBatchHttpTests
         }
     }
 
-    private static WebApplicationFactory<Program> Factory(UnexpectedIngestionService service) =>
+    private sealed class RecordingService : IUsageEventIngestionService
+    {
+        public List<IngestUsageEventCommand> Commands { get; } = [];
+        public int? FailOnCall { get; init; }
+        public DateTimeOffset ReceiptTime { get; } = DateTimeOffset.Parse("2026-09-05T12:00:00Z");
+
+        public Task<UsageEventIngestionResult> IngestAsync(
+            IngestUsageEventCommand command, CancellationToken cancellationToken)
+        {
+            var duplicate = Commands.Any(previous => previous.EventId == command.EventId);
+            Commands.Add(command);
+            if (Commands.Count == FailOnCall)
+                throw new InvalidOperationException("Private database failure details");
+            return Task.FromResult<UsageEventIngestionResult>(duplicate
+                ? new UsageEventIngestionResult.Duplicate(command.EventId)
+                : new UsageEventIngestionResult.Created(42, command.EventId,
+                    RawEventIngestionStatus.Pending, ReceiptTime));
+        }
+    }
+
+    private static WebApplicationFactory<Program> Factory(IUsageEventIngestionService service) =>
         new WebApplicationFactory<Program>().WithWebHostBuilder(builder =>
         {
             builder.UseEnvironment("Testing");
@@ -31,6 +52,62 @@ public sealed class UsageEventsBatchHttpTests
             builder.UseSetting("ConnectionStrings:UsageAnalyticsDatabase", "Server=unused;Database=unused");
             builder.ConfigureServices(services => services.AddSingleton<IUsageEventIngestionService>(service));
         });
+
+    private static object ValidEvent(Guid id) => new
+    {
+        eventId = id, userId = "user-1", productCode = "studio", eventType = "feature_used",
+        occurredAtUtc = "2026-09-05T10:00:00Z", properties = new { featureName = "Analyzer" }
+    };
+
+    [Fact]
+    public async Task MixedBatch_ReturnsOrderedOutcomesAndSkipsInvalidItem()
+    {
+        var service = new RecordingService();
+        using var factory = Factory(service);
+        using var client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
+        var id = Guid.NewGuid();
+        using var response = await client.PostAsJsonAsync("/api/usage-events/batch",
+            new { events = new object[] { 123, ValidEvent(id), ValidEvent(id) } });
+        Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+        var body = await response.Content.ReadFromJsonAsync<CreateUsageEventBatchResponse>();
+        Assert.NotNull(body);
+        Assert.Equal(new[] { 0, 1, 2 }, body.Results.Select(item => item.Index));
+        Assert.Equal(new[] { 400, 201, 409 }, body.Results.Select(item => item.Status));
+        Assert.NotNull(body.Results[0].Errors);
+        var created = body.Results[1].Event;
+        Assert.NotNull(created);
+        Assert.Equal(id, created.EventId);
+        Assert.Equal(42, created.RawEventId);
+        Assert.Equal("Pending", created.IngestionStatus);
+        Assert.Equal(service.ReceiptTime, created.ReceivedAtUtc);
+        Assert.Null(body.Results[1].Errors);
+        Assert.Null(body.Results[2].Event);
+        Assert.NotNull(body.Results[2].Detail);
+        Assert.Equal(2, service.Commands.Count);
+        Assert.All(service.Commands, command =>
+        {
+            Assert.Equal(id, command.EventId);
+            Assert.Equal("user-1", command.UserExternalId);
+            Assert.Equal("studio", command.ProductCode);
+            Assert.Equal("feature_used", command.EventType);
+            Assert.Equal(DateTimeOffset.Parse("2026-09-05T10:00:00Z"), command.OccurredAtUtc);
+            using var properties = System.Text.Json.JsonDocument.Parse(command.PropertiesJson!);
+            Assert.Equal("Analyzer", properties.RootElement.GetProperty("featureName").GetString());
+        });
+    }
+
+    [Fact]
+    public async Task UnexpectedFailure_StopsBeforeRemainingItems()
+    {
+        var service = new RecordingService { FailOnCall = 2 };
+        using var factory = Factory(service);
+        using var client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
+        using var response = await client.PostAsJsonAsync("/api/usage-events/batch",
+            new { events = new[] { ValidEvent(Guid.NewGuid()), ValidEvent(Guid.NewGuid()), ValidEvent(Guid.NewGuid()) } });
+        Assert.Equal(HttpStatusCode.InternalServerError, response.StatusCode);
+        Assert.Equal(2, service.Commands.Count);
+        Assert.DoesNotContain("Private database", await response.Content.ReadAsStringAsync());
+    }
 
     [Fact]
     public async Task InvalidItems_ReturnIndependentErrorsWithoutIngestion()

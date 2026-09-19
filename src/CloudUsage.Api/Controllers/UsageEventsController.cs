@@ -54,7 +54,7 @@ public sealed class UsageEventsController(
     }
 
     [HttpPost("batch")]
-    public Task<ActionResult<CreateUsageEventBatchResponse>> PostBatch(
+    public async Task<ActionResult<CreateUsageEventBatchResponse>> PostBatch(
         CreateUsageEventBatchRequest request, CancellationToken cancellationToken)
     {
         var results = new List<UsageEventBatchItemResult>();
@@ -74,12 +74,30 @@ public sealed class UsageEventsController(
                 continue;
             }
 
-            // Next learning step: ingest eventRequest and map Created/Duplicate to a result.
-            throw new NotImplementedException("Valid batch event ingestion is not implemented yet.");
+            var command = new IngestUsageEventCommand(
+                eventRequest!.EventId,
+                eventRequest.UserId,
+                eventRequest.ProductCode,
+                eventRequest.EventType,
+                eventRequest.OccurredAtUtc!.Value,
+                eventRequest.Properties?.GetRawText());
+
+            var result = await service.IngestAsync(command, cancellationToken);
+            results.Add(result switch
+            {
+                UsageEventIngestionResult.Created created => new UsageEventBatchItemResult(
+                    index, StatusCodes.Status201Created,
+                    new CreateUsageEventResponse(created.RawEventId, created.EventId,
+                        created.IngestionStatus.ToString(), created.ReceivedAtUtc),
+                    null, null),
+                UsageEventIngestionResult.Duplicate => new UsageEventBatchItemResult(
+                    index, StatusCodes.Status409Conflict, null, null,
+                    "An event with this eventId has already been stored."),
+                _ => throw new InvalidOperationException("Unknown ingestion result.")
+            });
         }
 
-        return Task.FromResult<ActionResult<CreateUsageEventBatchResponse>>(
-            Ok(new CreateUsageEventBatchResponse(results)));
+        return Ok(new CreateUsageEventBatchResponse(results));
     }
 
     private CreateUsageEventRequest? ParseAndValidateBatchItem(JsonElement item)
