@@ -17,10 +17,7 @@ public sealed class UsageEventsController(IUsageEventIngestionService service) :
     public async Task<ActionResult<CreateUsageEventResponse>> Post(
         CreateUsageEventRequest request, CancellationToken cancellationToken)
     {
-        if (request.EventId == Guid.Empty)
-            ModelState.AddModelError(nameof(request.EventId), "A non-empty event ID is required.");
-        if (request.Properties is { ValueKind: not JsonValueKind.Object })
-            ModelState.AddModelError(nameof(request.Properties), "Properties must be a JSON object or null.");
+        ValidateCustomEventRules(request);
         if (!ModelState.IsValid)
             return ValidationProblem(ModelState);
 
@@ -51,5 +48,14 @@ public sealed class UsageEventsController(IUsageEventIngestionService service) :
 
             _ => throw new InvalidOperationException("Unknown ingestion result.")
         };
+    }
+
+    private void ValidateCustomEventRules(CreateUsageEventRequest request)
+    {
+        if (request.EventId == Guid.Empty)
+            ModelState.AddModelError(nameof(request.EventId), "A non-empty event ID is required.");
+
+        if (request.Properties is { ValueKind: not JsonValueKind.Object })
+            ModelState.AddModelError(nameof(request.Properties), "Properties must be a JSON object or null.");
     }
 }
