@@ -1,7 +1,35 @@
 @CloudUsage.Api_HostAddress = http://localhost:5073
+@BatchEventId = 24952492-6850-4bdd-aebf-49d0e0053555
 
 GET {{CloudUsage.Api_HostAddress}}/health
 Accept: application/json
+
+###
+
+# First submission: overall 200, item statuses 400, 201, 409.
+# Repeat submission: overall 200, item statuses 400, 409, 409.
+POST {{CloudUsage.Api_HostAddress}}/api/usage-events/batch
+Content-Type: application/json
+
+{
+  "events": [
+    123,
+    {
+      "eventId": "{{BatchEventId}}",
+      "userId": "batch-user",
+      "productCode": "studio",
+      "eventType": "feature_used",
+      "occurredAtUtc": "2026-09-19T10:00:00Z"
+    },
+    {
+      "eventId": "{{BatchEventId}}",
+      "userId": "batch-user",
+      "productCode": "studio",
+      "eventType": "feature_used",
+      "occurredAtUtc": "2026-09-19T10:00:00Z"
+    }
+  ]
+}
 
 ###
 

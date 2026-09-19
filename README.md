@@ -139,6 +139,14 @@ Remove-Item Env:CLOUD_USAGE_SQL_TESTS
 
 The SQL test requires permission to create/drop databases. It migrates a unique `CloudUsageTests_<guid>` database and removes it afterward; it never migrates or clears the application database. It covers persistence, sequential duplicates, a forced concurrent insert race, unexpected constraint failures, cancellation, and HTTP-to-SQL ingestion. If a test process is killed, a test database may require manual cleanup.
 
+### Batch ingestion
+
+`POST /api/usage-events/batch` accepts an object with an `events` array of 1–100 items. Each item is independently parsed and validated using the single-event rules. A processed batch returns HTTP 200 with ordered `results`; each includes its zero-based `index` and item `status` (201 created, 400 invalid, or 409 duplicate). Created items include `event` details; invalid items include `errors`; duplicates include `detail`. Unused fields are null.
+
+Malformed JSON or an invalid envelope returns overall 400. Processing is sequential and non-atomic: each successful insert is committed independently. Unexpected failures stop processing and return overall 500 without accumulated item results; earlier inserts remain stored. On retry, those IDs return 409. Cancellation or connection loss can also leave partially stored batches. Keep event IDs stable across retries.
+
+The `.http` file includes a mixed-batch example. SQL integration coverage verifies mixed outcomes, persisted row counts, and retry behavior. Bulk SQL insertion and throughput tuning are deferred; this endpoint still performs per-event database operations. The 100-item cap is not a per-item byte limit; the batch currently uses the host's request-body limit.
+
 ## Future iterations
 
 Once the MVP is working end-to-end, potential extensions include scheduled transformations, Azure Data Factory or dbt, richer analytics such as retention or cohorts, authentication, and queue-based ingestion.

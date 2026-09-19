@@ -143,6 +143,20 @@ public sealed class UsageEventsBatchHttpTests
     }
 
     [Theory]
+    [InlineData(100, HttpStatusCode.OK)]
+    [InlineData(101, HttpStatusCode.BadRequest)]
+    public async Task BatchSize_EnforcesUpperBoundary(int count, HttpStatusCode expected)
+    {
+        var service = new RecordingService();
+        using var factory = Factory(service);
+        using var client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
+        var events = Enumerable.Range(0, count).Select(_ => ValidEvent(Guid.NewGuid())).ToArray();
+        using var response = await client.PostAsJsonAsync("/api/usage-events/batch", new { events });
+        Assert.Equal(expected, response.StatusCode);
+        Assert.Equal(count == 100 ? 100 : 0, service.Commands.Count);
+    }
+
+    [Theory]
     [InlineData("{}")]
     [InlineData("{\"events\":null}")]
     [InlineData("{\"events\":[]}")]

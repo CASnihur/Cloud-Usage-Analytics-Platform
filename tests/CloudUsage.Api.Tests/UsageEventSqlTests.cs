@@ -10,6 +10,7 @@ using Microsoft.AspNetCore.Hosting;
 using Microsoft.AspNetCore.Mvc.Testing;
 using System.Net;
 using System.Net.Http.Json;
+using CloudUsage.Api.Contracts.UsageEvents;
 
 namespace CloudUsage.Api.Tests;
 
@@ -24,6 +25,61 @@ public sealed class SqlServerFactAttribute : FactAttribute
 
 public sealed class UsageEventSqlTests
 {
+    [SqlServerFact]
+    public async Task MixedBatch_PersistsOnlyValidUniqueEventsAndSupportsRetry()
+    {
+        var configuration = new ConfigurationBuilder().AddUserSecrets<Program>().AddEnvironmentVariables().Build();
+        var connection = configuration.GetConnectionString("UsageAnalyticsDatabase")
+            ?? throw new InvalidOperationException("Configure the API local database User Secret.");
+        var databaseName = "CloudUsageTests_" + Guid.NewGuid().ToString("N");
+        var connectionBuilder = new SqlConnectionStringBuilder(connection)
+        {
+            InitialCatalog = databaseName, ConnectTimeout = 5
+        };
+        var options = new DbContextOptionsBuilder<UsageAnalyticsDbContext>()
+            .UseSqlServer(connectionBuilder.ConnectionString).Options;
+        await using var db = new UsageAnalyticsDbContext(options);
+        try
+        {
+            await db.Database.MigrateAsync();
+            using var factory = new WebApplicationFactory<Program>().WithWebHostBuilder(host =>
+            {
+                host.UseEnvironment("Testing");
+                host.UseSetting("ConnectionStrings:UsageAnalyticsDatabase", connectionBuilder.ConnectionString);
+                host.ConfigureLogging(logging => logging.ClearProviders().AddConsole());
+            });
+            using var client = factory.CreateClient(new() { BaseAddress = new Uri("https://localhost") });
+            var firstId = Guid.NewGuid();
+            var secondId = Guid.NewGuid();
+            object Event(Guid id) => new { eventId = id, userId = "batch-user", productCode = "studio",
+                eventType = "feature_used", occurredAtUtc = "2026-09-19T10:00:00Z" };
+            var payload = new { events = new object[] { 123, Event(firstId), Event(firstId), Event(secondId) } };
+
+            using var response = await client.PostAsJsonAsync("/api/usage-events/batch", payload);
+            Assert.Equal(HttpStatusCode.OK, response.StatusCode);
+            var body = await response.Content.ReadFromJsonAsync<CreateUsageEventBatchResponse>();
+            Assert.NotNull(body);
+            Assert.Equal(new[] { 400, 201, 409, 201 }, body.Results.Select(item => item.Status));
+            Assert.Equal(new[] { 0, 1, 2, 3 }, body.Results.Select(item => item.Index));
+            var stored = await db.RawUsageEvents.AsNoTracking().ToListAsync();
+            Assert.Equal(2, stored.Count);
+            Assert.Contains(stored, row => row.EventId == firstId && row.RawEventId == body.Results[1].Event!.RawEventId);
+            Assert.Contains(stored, row => row.EventId == secondId && row.RawEventId == body.Results[3].Event!.RawEventId);
+
+            using var retry = await client.PostAsJsonAsync("/api/usage-events/batch", payload);
+            Assert.Equal(HttpStatusCode.OK, retry.StatusCode);
+            var retryBody = await retry.Content.ReadFromJsonAsync<CreateUsageEventBatchResponse>();
+            Assert.NotNull(retryBody);
+            Assert.Equal(new[] { 400, 409, 409, 409 }, retryBody.Results.Select(item => item.Status));
+            Assert.Equal(2, await db.RawUsageEvents.CountAsync());
+        }
+        finally
+        {
+            // Delete only the uniquely named database created for this test.
+            await db.Database.EnsureDeletedAsync();
+        }
+    }
+
     // Both requests reach SaveChanges only after their pre-check has returned false.
     private sealed class SaveBarrier : SaveChangesInterceptor
     {
